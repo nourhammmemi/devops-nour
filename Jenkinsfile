@@ -1,30 +1,39 @@
 pipeline {
     agent any
 
+    environment {
+        // Nom de ton installation SonarQube dans Jenkins
+        SONARQUBE_NAME = 'sonarqube'
+        // URL et token SonarQube (déjà configurés dans Jenkins)
+        SONAR_HOST_URL = 'http://localhost:9000'
+        SONAR_AUTH_TOKEN = credentials('sonar-token')
+        DOCKER_IMAGE_NAME = "devops-nour:latest"
+        APP_URL = "http://localhost:8082" // port où Spring Boot tourne
+    }
+
     stages {
-        stage('Checkout') {
+        stage('Checkout SCM') {
             steps {
-                checkout([$class: 'GitSCM', 
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[url: 'https://github.com/nourhammmemi/devops-nour.git']]])
+                git branch: 'main',
+                    url: 'https://github.com/nourhammmemi/devops-nour.git'
             }
         }
 
-        stage('MAVEN Build') {
+        stage('Maven Build') {
             steps {
                 sh 'mvn clean compile'
             }
         }
 
-        stage('SONARQUBE') {
+        stage('SonarQube Analysis') {
             steps {
                 script {
                     try {
-                        withSonarQubeEnv('sonarqube') {
-                            sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_AUTH_TOKEN'
+                        withSonarQubeEnv(SONARQUBE_NAME) {
+                            sh "mvn verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_AUTH_TOKEN}"
                         }
                     } catch (err) {
-                        echo "SonarQube step failed. Marking build as UNSTABLE."
+                        echo "SonarQube scan failed, marking build as UNSTABLE"
                         currentBuild.result = 'UNSTABLE'
                     }
                 }
@@ -33,59 +42,55 @@ pipeline {
 
         stage('Security Scans (Parallel)') {
             parallel {
-                stage('SCA - Dependency Scan (Trivy)') {
+                stage('SCA - Trivy FS') {
                     steps {
                         script {
                             try {
                                 sh 'bash ci/scripts/run_trivy_fs.sh'
                             } catch (err) {
-                                echo "Trivy SCA scan failed. Marking build as UNSTABLE."
+                                echo "Trivy filesystem scan failed, marking build as UNSTABLE"
                                 currentBuild.result = 'UNSTABLE'
                             }
                         }
                     }
                 }
 
-                stage('Docker Build and Scan') {
+                stage('Docker Build & Scan') {
                     steps {
                         script {
-                            try {
-                                def dockerfile = "${pwd()}/Dockerfile"
-                                if (fileExists(dockerfile)) {
-                                    def imageName = "devops-nour:latest"
-                                    sh "docker build -t ${imageName} ."
-                                    sh "bash ci/scripts/run_trivy_image.sh ${imageName}"
-                                } else {
-                                    echo "Dockerfile not found. Skipping Docker build."
-                                }
-                            } catch (err) {
-                                echo "Docker build/scan failed. Marking build as UNSTABLE."
-                                currentBuild.result = 'UNSTABLE'
+                            def dockerfilePath = "${pwd()}/Dockerfile"
+                            if (fileExists(dockerfilePath)) {
+                                sh "docker build -t ${DOCKER_IMAGE_NAME} ."
+                                sh "bash ci/scripts/run_trivy_image.sh ${DOCKER_IMAGE_NAME}"
+                            } else {
+                                echo "Dockerfile not found at ${dockerfilePath}, skipping Docker build"
                             }
                         }
                     }
                 }
 
-                stage('Secrets Scan (Gitleaks)') {
+                stage('Secrets Scan - Gitleaks') {
                     steps {
                         script {
                             try {
                                 sh 'bash ci/scripts/run_gitleaks.sh'
                             } catch (err) {
-                                echo "Gitleaks scan failed. Marking build as UNSTABLE."
+                                echo "Gitleaks scan failed, marking build as UNSTABLE"
                                 currentBuild.result = 'UNSTABLE'
                             }
                         }
                     }
                 }
 
-                stage('DAST Scan (OWASP ZAP)') {
+                stage('DAST - OWASP ZAP') {
                     steps {
                         script {
                             try {
-                                sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8080'
+                                // Pull de l'image si nécessaire
+                                sh 'docker pull owasp/zap2docker-stable || true'
+                                sh "bash ci/scripts/run_zap_dast.sh ${APP_URL}"
                             } catch (err) {
-                                echo "DAST scan failed. Marking build as UNSTABLE."
+                                echo "DAST scan failed, marking build as UNSTABLE"
                                 currentBuild.result = 'UNSTABLE'
                             }
                         }
@@ -94,17 +99,12 @@ pipeline {
             }
         }
 
-        stage('Summary') {
+        stage('Pipeline Summary') {
             steps {
                 script {
-                    if (currentBuild.result == 'UNSTABLE') {
-                        echo "Pipeline finished with UNSTABLE status. Some security checks failed."
-                    } else {
-                        echo "Pipeline finished SUCCESSFULLY. All builds and scans passed."
-                    }
+                    echo "Pipeline finished. Current build status: ${currentBuild.result ?: 'SUCCESS'}"
                 }
             }
         }
     }
 }
-
