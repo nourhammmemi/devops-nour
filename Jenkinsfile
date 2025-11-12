@@ -2,11 +2,8 @@ pipeline {
     agent any
 
     environment {
-        // Nom de ton installation SonarQube dans Jenkins
-        SONARQUBE_NAME = 'sonarqube'
-        // URL et token SonarQube (déjà configurés dans Jenkins)
+        SONARQUBE_NAME = 'sonarqube'   // Nom exact de ton installation SonarQube
         SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_AUTH_TOKEN = credentials('jenkins-token')
         DOCKER_IMAGE_NAME = "devops-nour:latest"
         APP_URL = "http://localhost:8082" // port où Spring Boot tourne
     }
@@ -29,8 +26,11 @@ pipeline {
             steps {
                 script {
                     try {
-                        withSonarQubeEnv(SONARQUBE_NAME) {
-                            sh "mvn verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_AUTH_TOKEN}"
+                        // Utiliser withCredentials pour le token
+                        withCredentials([string(credentialsId: 'jenkins-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                            withSonarQubeEnv(SONARQUBE_NAME) {
+                                sh "mvn verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=${SONAR_HOST_URL} -Dsonar.login=${SONAR_AUTH_TOKEN}"
+                            }
                         }
                     } catch (err) {
                         echo "SonarQube scan failed, marking build as UNSTABLE"
@@ -86,7 +86,6 @@ pipeline {
                     steps {
                         script {
                             try {
-                                // Pull de l'image si nécessaire
                                 sh 'docker pull owasp/zap2docker-stable || true'
                                 sh "bash ci/scripts/run_zap_dast.sh ${APP_URL}"
                             } catch (err) {
