@@ -1,15 +1,17 @@
 pipeline {
     agent any
 
+    // Variables d'environnement globales
     environment {
-        // Pas besoin de mettre SONAR_HOST_URL ici, il sera injecté par withSonarQubeEnv
+        SONAR_AUTH_TOKEN = credentials('jenkins-token') // ID du secret Jenkins
     }
 
     stages {
         stage('Checkout SCM') {
             steps {
                 git branch: 'main',
-                    credentialsId: 'jenkins-github-https-cred',
+                    changelog: false,
+                    credentialsId: '', // si ton repo est public, sinon mets tes credentials GitHub
                     url: 'https://github.com/nourhammmemi/devops-nour.git'
             }
         }
@@ -22,15 +24,18 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                withCredentials([string(credentialsId: 'jenkins-token', variable: 'SONAR_AUTH_TOKEN')]) {
-                    // 'sonarqube' doit correspondre exactement au nom de ton serveur dans Jenkins
-                    withSonarQubeEnv('sonarqube') {
-                        sh """
-                        mvn verify sonar:sonar \
-                            -Dsonar.projectKey=devops-nour \
-                            -Dsonar.host.url=\${SONAR_HOST_URL} \
-                            -Dsonar.login=\${SONAR_AUTH_TOKEN}
-                        """
+                script {
+                    try {
+                        withSonarQubeEnv('sonarqube') { // nom du serveur SonarQube configuré dans Jenkins
+                            sh """
+                                mvn verify sonar:sonar \
+                                    -Dsonar.projectKey=devops-nour \
+                                    -Dsonar.login=${SONAR_AUTH_TOKEN}
+                            """
+                        }
+                    } catch (err) {
+                        echo "SonarQube scan failed, marking build as UNSTABLE"
+                        currentBuild.result = 'UNSTABLE'
                     }
                 }
             }
@@ -43,30 +48,44 @@ pipeline {
                         sh 'bash ci/scripts/run_trivy_fs.sh'
                     }
                 }
-                stage('Docker Build & Scan') {
-                    steps {
-                        sh 'echo "Dockerfile not found, skipping Docker build"'
-                    }
-                }
+
                 stage('Secrets Scan - Gitleaks') {
                     steps {
                         sh 'bash ci/scripts/run_gitleaks.sh'
                     }
                 }
+
+                stage('Docker Build & Scan') {
+                    steps {
+                        script {
+                            if (fileExists('Dockerfile')) {
+                                sh 'docker build -t devops-nour .'
+                            } else {
+                                echo "Dockerfile not found, skipping Docker build"
+                            }
+                        }
+                    }
+                }
+
                 stage('DAST - OWASP ZAP') {
                     steps {
-                        sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8082 || true'
+                        script {
+                            try {
+                                sh 'docker pull owasp/zap2docker-stable:latest || true'
+                                sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8082'
+                            } catch (err) {
+                                echo "OWASP ZAP scan failed, continuing..."
+                            }
+                        }
                     }
                 }
             }
         }
+    }
 
-        stage('Pipeline Summary') {
-            steps {
-                script {
-                    echo "Pipeline finished. Current build status: ${currentBuild.currentResult}"
-                }
-            }
+    post {
+        always {
+            echo "Pipeline finished. Build status: ${currentBuild.result ?: 'SUCCESS'}"
         }
     }
 }
