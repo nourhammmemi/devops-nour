@@ -6,7 +6,7 @@ pipeline {
         SONARQUBE_NAME = 'sonarqube'
         // URL et token SonarQube (déjà configurés dans Jenkins)
         SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_AUTH_TOKEN = credentials('sonar-token')
+        SONAR_AUTH_TOKEN = credentials('jenkins-token')
         DOCKER_IMAGE_NAME = "devops-nour:latest"
         APP_URL = "http://localhost:8082" // port où Spring Boot tourne
     }
