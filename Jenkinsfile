@@ -18,13 +18,11 @@ pipeline {
             }
         }
 
-       stage('SONARQUBE') {
-    environment {
-        SONAR_HOST_URL = 'http://192.168.50.4:9000/'
-        SONAR_AUTH_TOKEN = credentials('sonarqube')
-    }
+ stage('SONARQUBE') {
     steps {
-        sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.token=$SONAR_AUTH_TOKEN'
+        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
+            sh "mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=http://192.168.50.4:9000/ -Dsonar.login=$SONAR_AUTH_TOKEN"
+        }
     }
 }
     }
