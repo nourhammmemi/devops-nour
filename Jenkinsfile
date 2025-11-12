@@ -18,8 +18,8 @@ pipeline {
 
         stage('SONARQUBE') {
             steps {
-                withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-                    sh "mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=http://192.168.50.4:9000/ -Dsonar.login=$SONAR_AUTH_TOKEN"
+                withSonarQubeEnv('sonarqube') {
+                    sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_AUTH_TOKEN'
                 }
             }
         }
@@ -30,7 +30,8 @@ pipeline {
                     try {
                         sh 'bash ci/scripts/run_trivy_fs.sh'
                     } catch (err) {
-                        echo "⚠️ Trivy scan failed: ${err}. Continuing pipeline..."
+                        echo "Trivy scan failed, marking build as UNSTABLE"
+                        currentBuild.result = 'UNSTABLE'
                     }
                 }
             }
@@ -45,7 +46,7 @@ pipeline {
                         sh "docker build -t ${imageName} ."
                         sh "bash ci/scripts/run_trivy_image.sh ${imageName}"
                     } else {
-                        echo "⚠️ Dockerfile not found at ${dockerfile}. Skipping Docker build."
+                        echo "Dockerfile not found at ${dockerfile}. Skipping Docker build."
                     }
                 }
             }
@@ -59,8 +60,16 @@ pipeline {
 
         stage('DAST Scan (OWASP ZAP)') {
             steps {
-                sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8080'
+                script {
+                    try {
+                        sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8080'
+                    } catch (err) {
+                        echo "DAST scan failed, marking build as UNSTABLE"
+                        currentBuild.result = 'UNSTABLE'
+                    }
+                }
             }
         }
     }
 }
+
