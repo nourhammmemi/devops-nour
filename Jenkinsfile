@@ -25,7 +25,56 @@ pipeline {
         }
     }
 }
+
+        // -----------------------------
+        // SCA - Analyse des dépendances
+        // -----------------------------
+        stage('SCA - Dependency Scan (Trivy)') {
+            steps {
+                sh 'bash ci/scripts/run_trivy_fs.sh'
+            }
+        }
+
+        // -----------------------------
+        // Docker Build + Scan
+        // -----------------------------
+        stage('Docker Build and Scan') {
+            steps {
+                script {
+                    def imageName = "devops-nour:latest"
+                    sh "docker build -t ${imageName} ."
+                    sh "bash ci/scripts/run_trivy_image.sh ${imageName}"
+                }
+            }
+        }
+
+        // -----------------------------
+        // Secrets Scan avec Gitleaks
+        // -----------------------------
+        stage('Secrets Scan (Gitleaks)') {
+            steps {
+                sh 'bash ci/scripts/run_gitleaks.sh'
+            }
+        }
+
+        // -----------------------------
+        // DAST Scan avec OWASP ZAP
+        // -----------------------------
+        stage('DAST Scan (OWASP ZAP)') {
+            steps {
+                sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8080' // adapte l'URL si nécessaire
+            }
+        }
     }
- 
+    }
+
+  // -----------------------------
+    // Archivage des rapports
+    // -----------------------------
+  post {
+    always {
+        archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+    }
+}
 
 }
