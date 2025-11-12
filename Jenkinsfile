@@ -18,13 +18,13 @@ pipeline {
             }
         }
 
- stage('SONARQUBE') {
-    steps {
-        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-            sh "mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=http://192.168.50.4:9000/ -Dsonar.login=$SONAR_AUTH_TOKEN"
+        stage('SONARQUBE') {
+            steps {
+                withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
+                    sh "mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=http://192.168.50.4:9000/ -Dsonar.login=$SONAR_AUTH_TOKEN"
+                }
+            }
         }
-    }
-}
 
         // -----------------------------
         // SCA - Analyse des dépendances
@@ -66,15 +66,7 @@ pipeline {
             }
         }
     }
-    }
 
-  // -----------------------------
-    // Archivage des rapports
-    // -----------------------------
-  post {
-    always {
-        archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
-    }
+    // ✅ Pas d'accolade supplémentaire ici
 }
 
-}
