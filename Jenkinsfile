@@ -2,21 +2,16 @@ pipeline {
     agent any
 
     stages {
-         steps {
-                // Remplacement de la commande 'git' par checkout pour utiliser Git du système
-                checkout([
-                    $class: 'GitSCM',
-                    branches: [[name: '*/main']],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/nourhammmemi/devops-nour.git',
-                        credentialsId: 'jenkins-github-https-cred'
-                    ]]
-                ])
+        stage('GIT') {
+            steps {
+                checkout([$class: 'GitSCM', 
+                    branches: [[name: '*/main']], 
+                    userRemoteConfigs: [[url: 'https://github.com/nourhammmemi/devops-nour.git']]])
             }
+        }
 
         stage('MAVEN Build') {
             steps {
-                // Compile le projet sans exécuter les tests
                 sh 'mvn clean compile'
             }
         }
@@ -29,18 +24,12 @@ pipeline {
             }
         }
 
-        // -----------------------------
-        // SCA - Analyse des dépendances
-        // -----------------------------
         stage('SCA - Dependency Scan (Trivy)') {
             steps {
                 sh 'bash ci/scripts/run_trivy_fs.sh'
             }
         }
 
-        // -----------------------------
-        // Docker Build + Scan
-        // -----------------------------
         stage('Docker Build and Scan') {
             steps {
                 script {
@@ -51,25 +40,16 @@ pipeline {
             }
         }
 
-        // -----------------------------
-        // Secrets Scan avec Gitleaks
-        // -----------------------------
         stage('Secrets Scan (Gitleaks)') {
             steps {
                 sh 'bash ci/scripts/run_gitleaks.sh'
             }
         }
 
-        // -----------------------------
-        // DAST Scan avec OWASP ZAP
-        // -----------------------------
         stage('DAST Scan (OWASP ZAP)') {
             steps {
-                sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8080' // adapte l'URL si nécessaire
+                sh 'bash ci/scripts/run_zap_dast.sh http://localhost:8080'
             }
         }
     }
-
-    // ✅ Pas d'accolade supplémentaire ici
 }
-
