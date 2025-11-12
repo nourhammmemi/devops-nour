@@ -18,14 +18,16 @@ pipeline {
             }
         }
 
-        stage('SONARQUBE') {
-            environment {
-                SONAR_HOST_URL = 'http://192.168.50.4:9000/'
-                SONAR_AUTH_TOKEN = credentials('sonarqube')
-            }
-            steps {
-                sh 'mvn sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.token=$SONAR_AUTH_TOKEN'
-            }
-        }
+       stage('SONARQUBE') {
+    environment {
+        SONAR_HOST_URL = 'http://192.168.50.4:9000/'
+        SONAR_AUTH_TOKEN = credentials('sonarqube')
     }
+    steps {
+        sh 'mvn clean verify sonar:sonar -Dsonar.projectKey=devops-nour -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.token=$SONAR_AUTH_TOKEN'
+    }
+}
+    }
+ 
+
 }
