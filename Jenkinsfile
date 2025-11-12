@@ -2,14 +2,17 @@ pipeline {
     agent any
 
     stages {
-        stage('GIT') {
-            steps {
-                git branch: 'main',
-                    changelog: false,
-                    credentialsId: 'jenkins-github-https-cred',
-                    url: 'https://github.com/nourhammmemi/devops-nour.git'
+         steps {
+                // Remplacement de la commande 'git' par checkout pour utiliser Git du système
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/nourhammmemi/devops-nour.git',
+                        credentialsId: 'jenkins-github-https-cred'
+                    ]]
+                ])
             }
-        }
 
         stage('MAVEN Build') {
             steps {
