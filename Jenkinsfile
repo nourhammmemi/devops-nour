@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SONAR_AUTH_TOKEN = credentials('jenkins-token') // Ton token Jenkins pour SonarQube
+        SONAR_AUTH_TOKEN = credentials('jenkins-token') // Ton secret Jenkins
     }
 
     stages {
@@ -11,7 +11,7 @@ pipeline {
             steps {
                 git branch: 'main',
                     changelog: false,
-                    credentialsId: '', // <-- Mettre l'ID si repo privé, sinon laisser vide
+                    credentialsId: '', // si repo privé, sinon vide
                     url: 'https://github.com/nourhammmemi/devops-nour.git'
             }
         }
@@ -19,7 +19,7 @@ pipeline {
         // 2️⃣ Compilation Maven
         stage('Maven Build') {
             steps {
-                sh 'mvn clean package' // 'package' plus rapide que 'verify'
+                sh 'mvn clean compile'
             }
         }
 
@@ -28,9 +28,9 @@ pipeline {
             steps {
                 script {
                     try {
-                        withSonarQubeEnv('sonarqube') { // Vérifier que le nom correspond au serveur Jenkins
+                        withSonarQubeEnv('sonarqube') {
                             sh """
-                                mvn sonar:sonar \
+                                mvn verify sonar:sonar \
                                     -Dsonar.projectKey=devops-nour \
                                     -Dsonar.login=${SONAR_AUTH_TOKEN}
                             """
@@ -59,39 +59,32 @@ pipeline {
 
         // 5️⃣ Scans de sécurité (Parallèle)
         stage('Security Scans (Parallel)') {
-            parallel failFast: true { // FailFast = arrête toutes les branches si une échoue
-                stage('SCA - Trivy FS') {
-                    steps {
-                        sh 'bash ci/scripts/run_trivy_fs.sh'
-                    }
-                }
-
-                stage('Secrets Scan - Gitleaks') {
-                    steps {
-                        sh 'bash ci/scripts/run_gitleaks.sh'
-                    }
-                }
-
-                stage('Docker Build & Scan') {
-                    steps {
-                        script {
-                            if (fileExists('Dockerfile')) {
-                                sh 'docker build -t devops-nour .'
-                                sh 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour'
-                            } else {
-                                echo "Dockerfile not found, skipping Docker build & scan"
-                            }
+            failFast true // Arrête toutes les branches si une échoue
+            parallel (
+                'SCA - Trivy FS': {
+                    sh 'bash ci/scripts/run_trivy_fs.sh'
+                },
+                'Secrets Scan - Gitleaks': {
+                    sh 'bash ci/scripts/run_gitleaks.sh'
+                },
+                'Docker Build & Scan': {
+                    script {
+                        if (fileExists('Dockerfile')) {
+                            sh 'docker build -t devops-nour .'
+                            sh 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour'
+                        } else {
+                            echo "Dockerfile not found, skipping Docker build & scan"
                         }
                     }
                 }
-            }
+            )
         }
     }
 
     post {
         always {
             echo "Pipeline finished. Build status: ${currentBuild.result ?: 'SUCCESS'}"
-            cleanWs() // Nettoie l'espace de travail après chaque run
         }
     }
 }
+
