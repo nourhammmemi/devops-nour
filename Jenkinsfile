@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SONAR_AUTH_TOKEN = credentials('jenkins-token') // ton secret Jenkins
+        SONAR_AUTH_TOKEN = credentials('jenkins-token') // Ton token Jenkins pour SonarQube
     }
 
     stages {
@@ -11,7 +11,7 @@ pipeline {
             steps {
                 git branch: 'main',
                     changelog: false,
-                    credentialsId: '', // si repo privé, sinon vide
+                    credentialsId: '', // <-- Mettre l'ID si repo privé, sinon laisser vide
                     url: 'https://github.com/nourhammmemi/devops-nour.git'
             }
         }
@@ -19,7 +19,7 @@ pipeline {
         // 2️⃣ Compilation Maven
         stage('Maven Build') {
             steps {
-                sh 'mvn clean compile'
+                sh 'mvn clean package' // 'package' plus rapide que 'verify'
             }
         }
 
@@ -28,9 +28,9 @@ pipeline {
             steps {
                 script {
                     try {
-                        withSonarQubeEnv('sonarqube') {
+                        withSonarQubeEnv('sonarqube') { // Vérifier que le nom correspond au serveur Jenkins
                             sh """
-                                mvn verify sonar:sonar \
+                                mvn sonar:sonar \
                                     -Dsonar.projectKey=devops-nour \
                                     -Dsonar.login=${SONAR_AUTH_TOKEN}
                             """
@@ -59,7 +59,7 @@ pipeline {
 
         // 5️⃣ Scans de sécurité (Parallèle)
         stage('Security Scans (Parallel)') {
-            parallel {
+            parallel failFast: true { // FailFast = arrête toutes les branches si une échoue
                 stage('SCA - Trivy FS') {
                     steps {
                         sh 'bash ci/scripts/run_trivy_fs.sh'
@@ -91,6 +91,7 @@ pipeline {
     post {
         always {
             echo "Pipeline finished. Build status: ${currentBuild.result ?: 'SUCCESS'}"
+            cleanWs() // Nettoie l'espace de travail après chaque run
         }
     }
 }
