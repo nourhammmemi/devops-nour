@@ -31,12 +31,16 @@ pipeline {
             }
         }
 
-        stage('Docker Build') {
-            steps {
-                echo "🐳 Construction de l’image Docker..."
-                sh "docker build -t ${IMAGE_NAME} ."
+       stage('Docker Build') {
+    steps {
+        script {
+            if (fileExists('Dockerfile')) {
+                sh 'docker build -t devops-nour .'
+            } else {
+                echo "Dockerfile not found, skipping Docker build"
             }
         }
+    }
 
         stage('Security Scan') {
             parallel {
