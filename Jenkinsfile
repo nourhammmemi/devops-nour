@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        // Variables d'environnement si nécessaires
-    }
-
     stages {
 
         stage('GIT') {
