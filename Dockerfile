@@ -1,14 +1,17 @@
-# Étape 1 : Builder avec Maven
-FROM maven:3.9.3-eclipse-temurin-17 AS builder
+FROM maven:3.8.6-openjdk-17 AS build
+
+# Copier pom.xml et télécharger uniquement les dépendances d'abord
+COPY pom.xml /app/
 WORKDIR /app
-COPY pom.xml .
-COPY src ./src
+RUN mvn dependency:go-offline -B
+
+# Copier tout le code et build
+COPY src /app/src
 RUN mvn clean package -DskipTests
 
-# Étape 2 : Image runtime
-FROM eclipse-temurin:17-jdk
-WORKDIR /app
-COPY --from=builder /app/target/timesheet-devops-1.0.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Phase finale avec seulement le JAR
+FROM openjdk:17-jdk-slim
+COPY --from=build /app/target/timesheet-devops-1.0.jar /app/timesheet-devops-1.0.jar
+ENTRYPOINT ["java","-jar","/app/timesheet-devops-1.0.jar"]
+
 
