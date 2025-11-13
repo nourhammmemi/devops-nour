@@ -4,12 +4,11 @@ pipeline {
 
     environment {
         IMAGE_NAME = "devops-nour:latest"
+        JAR_FILE = "target/timesheet-devops-1.0.jar"
     }
 
     options {
-        // Timeout global pour tout le pipeline
         timeout(time: 60, unit: 'MINUTES')
-        // Limiter le nombre de builds simultanés
         disableConcurrentBuilds()
     }
 
@@ -28,6 +27,13 @@ pipeline {
             steps {
                 echo "🔧 Compilation du projet Maven..."
                 sh 'mvn clean package -DskipTests'
+                
+                script {
+                    // Vérifier que le JAR existe
+                    if (!fileExists(env.JAR_FILE)) {
+                        error "❌ JAR non trouvé : ${env.JAR_FILE}. Vérifie la compilation Maven."
+                    }
+                }
             }
         }
 
@@ -44,7 +50,6 @@ pipeline {
                     steps {
                         echo "🔍 Analyse de l’image Docker avec Trivy..."
                         sh """
-                            # Timeout de 5 min pour Trivy
                             timeout 300s docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                             -v \$(pwd):/root/.cache/ aquasec/trivy:latest image --no-progress --format json \
                             -o trivy-image-report.json ${IMAGE_NAME} || true
@@ -81,6 +86,13 @@ pipeline {
         stage('Docker Build & Push') {
             steps {
                 echo "🐳 Construction et push de l’image Docker..."
+                
+                script {
+                    if (!fileExists(env.JAR_FILE)) {
+                        error "❌ JAR non trouvé pour Docker. Build Maven requis."
+                    }
+                }
+
                 sh "docker build -t ${IMAGE_NAME} ."
 
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {

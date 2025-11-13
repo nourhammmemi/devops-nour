@@ -8,7 +8,7 @@ RUN mvn clean package -DskipTests
 # Étape 2 : runtime
 FROM eclipse-temurin:17-jdk-jammy
 WORKDIR /app
-COPY --from=builder /app/target/timesheet-devops‑1.0.jar app.jar
+COPY --from=builder /app/target/timesheet-devops-1.0.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","app.jar"]
 
