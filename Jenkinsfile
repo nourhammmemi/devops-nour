@@ -57,34 +57,53 @@ pipeline {
             }
         }
 
-        // 5️⃣ Scans de sécurité (Parallèle)
+        // 5️⃣ Scans de sécurité (Parallèle avec failFast)
         stage('Security Scans') {
-            parallel {
+            parallel failFast: true,
+            stages: [
                 stage('SCA - Trivy FS') {
                     steps {
-                        sh 'bash ci/scripts/run_trivy_fs.sh'
+                        script {
+                            echo "Running Trivy filesystem scan..."
+                            def status = sh(script: 'bash ci/scripts/run_trivy_fs.sh', returnStatus: true)
+                            if (status != 0) {
+                                error "Trivy FS scan failed"
+                            }
+                        }
                     }
-                }
-
+                },
                 stage('Secrets Scan - Gitleaks') {
                     steps {
-                        sh 'bash ci/scripts/run_gitleaks.sh'
+                        script {
+                            echo "Running Gitleaks secrets scan..."
+                            def status = sh(script: 'bash ci/scripts/run_gitleaks.sh', returnStatus: true)
+                            if (status != 0) {
+                                error "Gitleaks scan failed"
+                            }
+                        }
                     }
-                }
-
+                },
                 stage('Docker Build & Scan') {
                     steps {
                         script {
                             if (fileExists('Dockerfile')) {
+                                echo "Building Docker image..."
                                 sh 'docker build -t devops-nour .'
-                                sh 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour'
+                                echo "Scanning Docker image with Trivy..."
+                                def status = sh(
+                                    script: 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour',
+                                    returnStatus: true
+                                )
+                                if (status != 0) {
+                                    error "Docker image scan failed"
+                                }
                             } else {
                                 echo "Dockerfile not found, skipping Docker build & scan"
                             }
                         }
                     }
                 }
-            }
+            ]
         }
     }
 
