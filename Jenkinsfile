@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        SONAR_AUTH_TOKEN = credentials('jenkins-token') // Ton secret Jenkins
+        SONAR_AUTH_TOKEN = credentials('jenkins-token') // Ton token Jenkins pour SonarQube
     }
 
     stages {
@@ -57,53 +57,27 @@ pipeline {
             }
         }
 
-        // 5️⃣ Scans de sécurité (Parallèle avec failFast)
-        stage('Security Scans') {
-            parallel failFast: true,
-            stages: [
-                stage('SCA - Trivy FS') {
-                    steps {
-                        script {
-                            echo "Running Trivy filesystem scan..."
-                            def status = sh(script: 'bash ci/scripts/run_trivy_fs.sh', returnStatus: true)
-                            if (status != 0) {
-                                error "Trivy FS scan failed"
-                            }
-                        }
-                    }
+        // 5️⃣ Scans de sécurité (Parallèle)
+        stage('Security Scans (Parallel)') {
+            failFast true  // Arrête toutes les branches si une échoue
+            parallel (
+                'SCA - Trivy FS': {
+                    sh 'bash ci/scripts/run_trivy_fs.sh'
                 },
-                stage('Secrets Scan - Gitleaks') {
-                    steps {
-                        script {
-                            echo "Running Gitleaks secrets scan..."
-                            def status = sh(script: 'bash ci/scripts/run_gitleaks.sh', returnStatus: true)
-                            if (status != 0) {
-                                error "Gitleaks scan failed"
-                            }
-                        }
-                    }
+                'Secrets Scan - Gitleaks': {
+                    sh 'bash ci/scripts/run_gitleaks.sh'
                 },
-                stage('Docker Build & Scan') {
-                    steps {
-                        script {
-                            if (fileExists('Dockerfile')) {
-                                echo "Building Docker image..."
-                                sh 'docker build -t devops-nour .'
-                                echo "Scanning Docker image with Trivy..."
-                                def status = sh(
-                                    script: 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour',
-                                    returnStatus: true
-                                )
-                                if (status != 0) {
-                                    error "Docker image scan failed"
-                                }
-                            } else {
-                                echo "Dockerfile not found, skipping Docker build & scan"
-                            }
+                'Docker Build & Scan': {
+                    script {
+                        if (fileExists('Dockerfile')) {
+                            sh 'docker build -t devops-nour .'
+                            sh 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour'
+                        } else {
+                            echo "Dockerfile not found, skipping Docker build & scan"
                         }
                     }
                 }
-            ]
+            )
         }
     }
 
@@ -111,7 +85,17 @@ pipeline {
         always {
             echo "Pipeline finished. Build status: ${currentBuild.result ?: 'SUCCESS'}"
         }
+        success {
+            echo "Pipeline completed successfully ✅"
+        }
+        unstable {
+            echo "Pipeline completed but marked UNSTABLE ⚠️"
+        }
+        failure {
+            echo "Pipeline failed ❌"
+        }
     }
 }
+
 
 
