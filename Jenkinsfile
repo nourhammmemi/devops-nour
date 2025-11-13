@@ -58,26 +58,33 @@ pipeline {
         }
 
         // 5️⃣ Scans de sécurité (Parallèle)
-        stage('Security Scans (Parallel)') {
-            failFast true // Arrête toutes les branches si une échoue
-            parallel (
-                'SCA - Trivy FS': {
-                    sh 'bash ci/scripts/run_trivy_fs.sh'
-                },
-                'Secrets Scan - Gitleaks': {
-                    sh 'bash ci/scripts/run_gitleaks.sh'
-                },
-                'Docker Build & Scan': {
-                    script {
-                        if (fileExists('Dockerfile')) {
-                            sh 'docker build -t devops-nour .'
-                            sh 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour'
-                        } else {
-                            echo "Dockerfile not found, skipping Docker build & scan"
+        stage('Security Scans') {
+            parallel {
+                stage('SCA - Trivy FS') {
+                    steps {
+                        sh 'bash ci/scripts/run_trivy_fs.sh'
+                    }
+                }
+
+                stage('Secrets Scan - Gitleaks') {
+                    steps {
+                        sh 'bash ci/scripts/run_gitleaks.sh'
+                    }
+                }
+
+                stage('Docker Build & Scan') {
+                    steps {
+                        script {
+                            if (fileExists('Dockerfile')) {
+                                sh 'docker build -t devops-nour .'
+                                sh 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour'
+                            } else {
+                                echo "Dockerfile not found, skipping Docker build & scan"
+                            }
                         }
                     }
                 }
-            )
+            }
         }
     }
 
@@ -87,4 +94,5 @@ pipeline {
         }
     }
 }
+
 
