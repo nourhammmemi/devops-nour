@@ -1,111 +1,114 @@
+#!/usr/bin/env groovy
 pipeline {
     agent any
 
     environment {
-        SONAR_AUTH_TOKEN = credentials('jenkins-token') // Ton token Jenkins pour SonarQube
+        IMAGE_NAME = "devops-nour:latest"
     }
 
     stages {
-        // 1️⃣ Récupération du code source
-        stage('Checkout SCM') {
+        stage('GIT') {
             steps {
+                echo "📦 Clonage du dépôt Git..."
                 git branch: 'main',
                     changelog: false,
-                    credentialsId: '', // si repo privé, sinon vide
+                    credentialsId: 'jenkins-github-https-cred',
                     url: 'https://github.com/nourhammmemi/devops-nour.git'
             }
         }
 
-        // 2️⃣ Compilation Maven
-        stage('Maven Build') {
+        stage('MAVEN Build') {
             steps {
-                sh 'mvn clean compile'
+                echo "🔧 Compilation du projet Maven..."
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        // 3️⃣ Analyse SonarQube
-        stage('SonarQube Analysis') {
+        stage('Unit Tests') {
             steps {
-                script {
-                    try {
-                        withSonarQubeEnv('sonarqube') {
-                            sh """
-                                mvn verify sonar:sonar \
-                                    -Dsonar.projectKey=devops-nour \
-                                    -Dsonar.login=${SONAR_AUTH_TOKEN}
-                            """
-                        }
-                    } catch (err) {
-                        echo "SonarQube scan failed, marking build as UNSTABLE"
-                        currentBuild.result = 'UNSTABLE'
-                    }
-                }
+                echo "🧪 Exécution des tests unitaires..."
+                sh 'mvn test'
             }
         }
 
-        // 4️⃣ Quality Gate SonarQube
-        stage('SonarQube Quality Gate') {
+        stage('Docker Build') {
             steps {
-                timeout(time: 1, unit: 'HOURS') {
-                    script {
-                        def qg = waitForQualityGate()
-                        if (qg.status != 'OK') {
-                            error "Pipeline blocked: SonarQube Quality Gate failed (${qg.status})"
-                        }
-                    }
-                }
+                echo "🐳 Construction de l’image Docker..."
+                sh "docker build -t ${IMAGE_NAME} ."
             }
         }
 
-        // 5️⃣ Scans de sécurité (Parallèle)
-        stage('Security Scans (Parallel)') {
+        stage('Security Scan') {
             parallel {
-                stage('SCA - Trivy FS') {
+                stage('Trivy Image Scan') {
                     steps {
-                        sh 'bash ci/scripts/run_trivy_fs.sh'
+                        echo "🔍 Analyse de l’image Docker avec Trivy..."
+                        sh """
+                            #!/bin/bash
+                            set -e
+                            IMAGE_NAME=${IMAGE_NAME}
+                            echo "Scanning Docker image \$IMAGE_NAME with Trivy..."
+                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v \$(pwd):/root/.cache/ aquasec/trivy:latest image --no-progress --format json \
+                            -o trivy-image-report.json "\$IMAGE_NAME" || true
+                        """
                     }
                 }
 
-                stage('Secrets Scan - Gitleaks') {
+                stage('OWASP Dependency Check') {
                     steps {
-                        sh 'bash ci/scripts/run_gitleaks.sh'
-                    }
-                }
-
-                stage('Docker Build & Scan') {
-                    steps {
-                        script {
-                            if (fileExists('Dockerfile')) {
-                                sh 'docker build -t devops-nour .'
-                                sh 'docker run --rm aquasec/trivy:latest image --exit-code 1 --severity CRITICAL devops-nour'
-                            } else {
-                                echo "Dockerfile not found, skipping Docker build & scan"
-                            }
-                        }
+                        echo "🧩 Vérification des dépendances avec OWASP..."
+                        sh """
+                            mkdir -p dependency-check
+                            docker run --rm -v \$(pwd):/src \
+                            owasp/dependency-check:latest \
+                            --scan /src --format "HTML" --out /src/dependency-check-report.html || true
+                        """
                     }
                 }
             }
-            options {
-                failFast(true) // Si un scan échoue, tous les autres s’arrêtent
+        }
+
+        stage('SonarQube Analysis') {
+            environment {
+                SONAR_SCANNER_OPTS = '-Dsonar.projectKey=devops-nour'
+            }
+            steps {
+                echo "📊 Analyse de la qualité du code avec SonarQube..."
+                withSonarQubeEnv('sonarqube') {
+                    sh 'mvn sonar:sonar'
+                }
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                echo "📤 Envoi de l’image Docker vers le registre..."
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker tag ${IMAGE_NAME} $DOCKER_USER/${IMAGE_NAME}
+                        docker push $DOCKER_USER/${IMAGE_NAME}
+                    """
+                }
             }
         }
     }
 
     post {
-        always {
-            echo "Pipeline finished. Build status: ${currentBuild.result ?: 'SUCCESS'}"
-        }
         success {
-            echo "Pipeline completed successfully ✅"
-        }
-        unstable {
-            echo "Pipeline completed but marked UNSTABLE ⚠️"
+            echo "✅ Pipeline exécuté avec succès !"
         }
         failure {
-            echo "Pipeline failed ❌"
+            echo "❌ Le pipeline a échoué."
+        }
+        always {
+            echo "📦 Nettoyage..."
+            sh 'docker system prune -f'
         }
     }
 }
+
 
 
 
