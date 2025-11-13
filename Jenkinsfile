@@ -6,6 +6,13 @@ pipeline {
         IMAGE_NAME = "devops-nour:latest"
     }
 
+    options {
+        // Timeout global pour tout le pipeline
+        timeout(time: 60, unit: 'MINUTES')
+        // Limiter le nombre de builds simultanés
+        disableConcurrentBuilds()
+    }
+
     stages {
         stage('GIT') {
             steps {
@@ -31,30 +38,16 @@ pipeline {
             }
         }
 
-       stage('Docker Build') {
-    steps {
-        script {
-            if (fileExists('Dockerfile')) {
-                sh 'docker build -t devops-nour .'
-            } else {
-                echo "Dockerfile not found, skipping Docker build"
-            }
-        }
-    }
-
         stage('Security Scan') {
             parallel {
                 stage('Trivy Image Scan') {
                     steps {
                         echo "🔍 Analyse de l’image Docker avec Trivy..."
                         sh """
-                            #!/bin/bash
-                            set -e
-                            IMAGE_NAME=${IMAGE_NAME}
-                            echo "Scanning Docker image \$IMAGE_NAME with Trivy..."
-                            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                            # Timeout de 5 min pour Trivy
+                            timeout 300s docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
                             -v \$(pwd):/root/.cache/ aquasec/trivy:latest image --no-progress --format json \
-                            -o trivy-image-report.json "\$IMAGE_NAME" || true
+                            -o trivy-image-report.json ${IMAGE_NAME} || true
                         """
                     }
                 }
@@ -64,7 +57,7 @@ pipeline {
                         echo "🧩 Vérification des dépendances avec OWASP..."
                         sh """
                             mkdir -p dependency-check
-                            docker run --rm -v \$(pwd):/src \
+                            timeout 300s docker run --rm -v \$(pwd):/src \
                             owasp/dependency-check:latest \
                             --scan /src --format "HTML" --out /src/dependency-check-report.html || true
                         """
@@ -85,14 +78,17 @@ pipeline {
             }
         }
 
-        stage('Docker Push') {
+        stage('Docker Build & Push') {
             steps {
-                echo "📤 Envoi de l’image Docker vers le registre..."
+                echo "🐳 Construction et push de l’image Docker..."
+                sh "docker build -t ${IMAGE_NAME} ."
+
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                     sh """
                         echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
                         docker tag ${IMAGE_NAME} $DOCKER_USER/${IMAGE_NAME}
                         docker push $DOCKER_USER/${IMAGE_NAME}
+                        docker logout
                     """
                 }
             }
@@ -107,13 +103,9 @@ pipeline {
             echo "❌ Le pipeline a échoué."
         }
         always {
-            echo "📦 Nettoyage..."
-            sh 'docker system prune -f'
+            echo "📦 Nettoyage des containers et images temporaires..."
+            sh 'docker container prune -f || true'
+            sh 'docker image prune -f || true'
         }
     }
 }
-
-
-
-
-
