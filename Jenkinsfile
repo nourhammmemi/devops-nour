@@ -5,7 +5,7 @@ pipeline {
 
         stage('GIT') {
             steps {
-                echo '📦 Clonage du dépôt Git...'
+                echo ' Clonage du dépôt Git...'
                 git branch: 'main',
                     changelog: false,
                     credentialsId: 'jenkins-github-https-cred',
@@ -15,14 +15,14 @@ pipeline {
 
         stage('MAVEN Build') {
             steps {
-                echo '🔧 Compilation du projet Maven...'
+                echo ' Compilation du projet Maven...'
                 sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Unit Tests') {
             steps {
-                echo '🧪 Exécution des tests unitaires...'
+                echo ' Exécution des tests unitaires...'
                 sh 'mvn test'
             }
         }
@@ -31,7 +31,7 @@ pipeline {
             parallel {
                 stage('Trivy Image Scan') {
                     steps {
-                        echo '🔍 Analyse de l’image Docker avec Trivy...'
+                        echo 'Analyse de l’image Docker avec Trivy...'
                         sh '''
                         pwd
                         timeout 300s docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $WORKSPACE:/root/.cache/ aquasec/trivy:latest image --no-progress --format json -o trivy-image-report.json devops-nour:latest || true
@@ -41,7 +41,7 @@ pipeline {
 
                 stage('OWASP Dependency Check') {
                     steps {
-                        echo '🧩 Vérification des dépendances avec OWASP...'
+                        echo ' Vérification des dépendances avec OWASP...'
                         sh '''
                         mkdir -p dependency-check
                         timeout 300s docker run --rm -v $WORKSPACE:/src owasp/dependency-check:latest --scan /src --format HTML --out /src/dependency-check-report.html || true
@@ -53,7 +53,7 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                echo '📊 Analyse de la qualité du code avec SonarQube...'
+                echo ' Analyse de la qualité du code avec SonarQube...'
                 withSonarQubeEnv('sonarqube') {
                     sh 'mvn sonar:sonar'
                 }
@@ -62,7 +62,7 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                echo '🐳 Construction de l’image Docker...'
+                echo ' Construction de l’image Docker...'
                 sh 'docker build -t devops-nour:latest .'
                 // Push Docker Hub supprimé pour éviter l'erreur
             }
@@ -70,7 +70,7 @@ pipeline {
 
         stage('Cleanup') {
             steps {
-                echo '📦 Nettoyage des containers et images temporaires...'
+                echo ' Nettoyage des containers et images temporaires...'
                 sh 'docker container prune -f'
                 sh 'docker image prune -f'
             }
@@ -79,10 +79,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Le pipeline a été exécuté avec succès !'
+            echo ' Le pipeline a été exécuté avec succès !'
         }
         failure {
-            echo '❌ Le pipeline a échoué.'
+            echo ' Le pipeline a échoué.'
         }
     }
 }
